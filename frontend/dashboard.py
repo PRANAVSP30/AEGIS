@@ -3,102 +3,188 @@ import requests
 
 st.set_page_config(page_title="AGEX Risk Intelligence Platform", layout="wide")
 
-st.title("AGEX – AI Risk Intelligence Platform")
-st.caption("AI-powered fraud detection and credit risk analysis for secure lending")
+# -------------------------
+# PROFESSIONAL CLEAN STYLE
+# -------------------------
 
-st.header("Step 1 — Customer Information")
+st.markdown("""
+<style>
 
-customer_name = st.text_input("Customer Name")
-pan = st.text_input("PAN Number")
-account = st.text_input("Bank Account Number")
-phone = st.text_input("Phone Number")
-dob = st.text_input("Date of Birth")
+.stApp {
+background-color: white;
+color: black;
+}
 
-loan_amount = st.number_input("Loan Amount Requested", min_value=0.0)
+h1,h2,h3 {
+color:#1f4fff;
+}
 
-st.header("Step 2 — Upload Bank Statements")
+button {
+background-color:#1f4fff;
+color:white;
+border-radius:6px;
+padding:10px 20px;
+border:none;
+}
 
-statements = st.file_uploader(
-    "Upload Bank Statements (CSV or PDF)",
-    type=["csv", "pdf"],
-    accept_multiple_files=True
-)
+button:hover {
+background-color:#163ccc;
+}
 
-if st.button("Run AI Analysis"):
+</style>
+""", unsafe_allow_html=True)
 
-    if not statements:
-        st.error("Please upload at least one bank statement.")
-    else:
+# -------------------------
+# PAGE STATE
+# -------------------------
 
-        files = []
+if "page" not in st.session_state:
+    st.session_state.page = 1
 
-        for statement in statements:
-            files.append(
-                ("files", (statement.name, statement.getvalue()))
-            )
+# -------------------------
+# PAGE 1 — CUSTOMER INFO
+# -------------------------
 
-        response = requests.post(
-            "http://127.0.0.1:8000/analyze-statement",
-            files=files,
-            params={
-                "loan_amount": loan_amount,
-                "customer_name": customer_name,
-                "pan": pan,
-                "account": account
-            }
-        )
+if st.session_state.page == 1:
 
-        data = response.json()
+    st.title("AGEX – AI Risk Intelligence Platform")
 
-        if "error" in data:
-            st.error(data["error"])
+    st.header("Step 1 — Customer Information")
 
-        else:
+    customer_name = st.text_input("Customer Name")
+    pan = st.text_input("PAN Number")
+    account = st.text_input("Bank Account Number")
+    phone = st.text_input("Phone Number")
+    dob = st.text_input("Date of Birth")
 
-            financial = data["financial_analysis"]
-            risk = data["risk_analysis"]
+    loan_amount = st.number_input("Loan Amount Requested", min_value=0.0)
 
-            st.header("Financial Behaviour Analysis")
+    if st.button("Next ➜"):
 
-            col1, col2, col3 = st.columns(3)
+        st.session_state.customer_name = customer_name
+        st.session_state.pan = pan
+        st.session_state.account = account
+        st.session_state.loan_amount = loan_amount
 
-            col1.metric("Total Income", financial["income"])
-            col2.metric("Total Expenses", financial["expenses"])
-            col3.metric("Transactions", financial["transactions"])
+        st.session_state.page = 2
+        st.rerun()
 
-            st.header("Risk Intelligence Report")
+# -------------------------
+# PAGE 2 — STATEMENT UPLOAD
+# -------------------------
 
-            col1, col2, col3, col4 = st.columns(4)
+elif st.session_state.page == 2:
 
-            col1.metric("Credit Risk", risk["credit_risk"])
-            col2.metric("Behaviour Risk", risk["behaviour_risk"])
-            col3.metric("Fraud Risk", risk["fraud_risk"])
-            col4.metric("Network Risk", risk["network_risk"])
+    st.title("AGEX – Financial Data Upload")
 
-            st.metric("Final Risk Score", risk["final_score"])
+    st.header("Step 2 — Upload Bank Statements")
 
-            decision = risk["decision"]
+    statements = st.file_uploader(
+        "Upload Bank Statements (CSV / PDF)",
+        type=["csv","pdf"],
+        accept_multiple_files=True
+    )
 
-            if decision == "APPROVE":
-                st.success("Loan Approved")
+    col1,col2 = st.columns(2)
 
-            elif decision == "MANUAL REVIEW":
-                st.warning("Manual Investigation Required")
+    with col1:
+        if st.button("⬅ Back"):
+            st.session_state.page = 1
+            st.rerun()
+
+    with col2:
+        if st.button("Run AI Analysis ➜"):
+
+            if not statements:
+                st.error("Please upload bank statements")
 
             else:
-                st.error("Loan Rejected")
 
-            st.subheader("AI Investigation Summary")
+                files=[]
 
-            st.info(risk["ai_report"])
+                for s in statements:
+                    files.append(("files",(s.name,s.getvalue())))
 
-            if "report_file" in data:
+                response=requests.post(
+                    "http://127.0.0.1:8000/analyze-statement",
+                    files=files,
+                    params={
+                        "loan_amount":st.session_state.loan_amount,
+                        "customer_name":st.session_state.customer_name,
+                        "pan":st.session_state.pan,
+                        "account":st.session_state.account
+                    }
+                )
 
-                with open(data["report_file"], "rb") as f:
+                data=response.json()
 
-                    st.download_button(
-                        label="Download Risk Report (PDF)",
-                        data=f,
-                        file_name=data["report_file"],
-                        mime="application/pdf"
-                    )
+                st.session_state.result=data
+                st.session_state.page=3
+                st.rerun()
+
+# -------------------------
+# PAGE 3 — REPORT
+# -------------------------
+
+elif st.session_state.page == 3:
+
+    data=st.session_state.result
+
+    if "error" in data:
+        st.error(data["error"])
+
+    else:
+
+        financial=data["financial_analysis"]
+        risk=data["risk_analysis"]
+
+        st.title("AGEX Risk Intelligence Report")
+
+        st.header("Financial Behaviour Analysis")
+
+        col1,col2,col3=st.columns(3)
+
+        col1.metric("Income",financial["income"])
+        col2.metric("Expenses",financial["expenses"])
+        col3.metric("Transactions",financial["transactions"])
+
+        st.header("Risk Intelligence")
+
+        r1,r2,r3,r4=st.columns(4)
+
+        r1.metric("Credit Risk",risk["credit_risk"])
+        r2.metric("Behaviour Risk",risk["behaviour_risk"])
+        r3.metric("Fraud Risk",risk["fraud_risk"])
+        r4.metric("Network Risk",risk["network_risk"])
+
+        st.metric("Final Risk Score",risk["final_score"])
+
+        decision=risk["decision"]
+
+        if decision=="APPROVE":
+            st.success("Loan Approved")
+
+        elif decision=="MANUAL REVIEW":
+            st.warning("Manual Investigation Required")
+
+        else:
+            st.error("Loan Rejected")
+
+        st.subheader("AI Investigation Summary")
+
+        st.info(risk["ai_report"])
+
+        if "report_file" in data:
+
+            with open(data["report_file"],"rb") as f:
+
+                st.download_button(
+                    "Download Risk Report (PDF)",
+                    data=f,
+                    file_name=data["report_file"],
+                    mime="application/pdf"
+                )
+
+        if st.button("Start New Analysis"):
+            st.session_state.page=1
+            st.rerun()
