@@ -1,46 +1,90 @@
 from fastapi import FastAPI, UploadFile, File
+from typing import List
 from backend.risk_engine import calculate_risk
 from backend.bank_analyzer import analyze_csv, analyze_pdf
 from backend.report_generator import generate_report
+from backend.fraud_database import init_db
 import tempfile
 
 app = FastAPI(title="AGEX Risk Intelligence API")
 
+# Initialize Fraud Intelligence Database
+init_db()
+
 
 @app.post("/analyze-statement")
-async def analyze_statement(file: UploadFile = File(...), loan_amount: float = 0,
-                            customer_name: str = "", pan: str = "", account: str = ""):
+async def analyze_statement(
+    files: List[UploadFile] = File(...),
+    loan_amount: float = 0,
+    customer_name: str = "",
+    pan: str = "",
+    account: str = ""
+):
 
-    filename = file.filename.lower()
+    try:
 
-    with tempfile.NamedTemporaryFile(delete=False) as temp:
-        contents = await file.read()
-        temp.write(contents)
-        temp_path = temp.name
+        total_income = 0
+        total_expenses = 0
+        total_transactions = 0
+        all_receivers = []
 
-    if filename.endswith(".csv"):
-        financial = analyze_csv(temp_path)
+        for file in files:
 
-    elif filename.endswith(".pdf"):
-        financial = analyze_pdf(temp_path)
+            filename = file.filename.lower()
 
-    else:
-        return {"error": "Unsupported file format"}
+            with tempfile.NamedTemporaryFile(delete=False) as temp:
+                contents = await file.read()
+                temp.write(contents)
+                temp_path = temp.name
 
-    income = financial["income"]
-    expenses = financial["expenses"]
+            if filename.endswith(".csv"):
+                result = analyze_csv(temp_path)
 
-    receiver_account = ""
+            elif filename.endswith(".pdf"):
+                result = analyze_pdf(temp_path)
 
-    if len(financial["receivers"]) > 0:
-        receiver_account = financial["receivers"][0]
+            else:
+                continue
 
-    risk = calculate_risk(income, expenses, loan_amount, receiver_account)
+            total_income += result["income"]
+            total_expenses += result["expenses"]
+            total_transactions += result["transactions"]
 
-    report_file = generate_report(customer_name, pan, account, loan_amount, financial, risk)
+            all_receivers.extend(result["receivers"])
 
-    return {
-        "financial_analysis": financial,
-        "risk_analysis": risk,
-        "report_file": report_file
-    }
+        receiver_account = ""
+
+        if len(all_receivers) > 0:
+            receiver_account = all_receivers[0]
+
+        financial = {
+            "income": total_income,
+            "expenses": total_expenses,
+            "transactions": total_transactions,
+            "receivers": all_receivers
+        }
+
+        risk = calculate_risk(
+            total_income,
+            total_expenses,
+            loan_amount,
+            receiver_account
+        )
+
+        report_file = generate_report(
+            customer_name,
+            pan,
+            account,
+            loan_amount,
+            financial,
+            risk
+        )
+
+        return {
+            "financial_analysis": financial,
+            "risk_analysis": risk,
+            "report_file": report_file
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
